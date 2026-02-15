@@ -1,15 +1,24 @@
+using AccountService.Data;
 using AccountService.Interfaces;
 using AccountService.Repositories;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.AddDebug();
-
 builder.Services.AddControllers();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -33,9 +42,22 @@ builder.Services.AddSwaggerGen(c =>
     }
 });
 
-builder.Services.AddSingleton<IAccountRepository, AccountRepository>();
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(connectionString));
+
+builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var repository = scope.ServiceProvider.GetRequiredService<IAccountRepository>();
+
+    dbContext.Database.EnsureCreated();
+    repository.InitializeTestData().Wait();
+}
 
 if (app.Environment.IsDevelopment())
 {
@@ -48,6 +70,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("AllowAll"); 
 app.UseAuthorization();
 app.MapControllers();
 

@@ -1,100 +1,26 @@
-﻿using AccountService.DTOs;
+﻿using Microsoft.EntityFrameworkCore;
+using AccountService.DTOs;
 using AccountService.Interfaces;
 using AccountService.Models;
+using AccountService.Data;
 
 namespace AccountService.Repositories
 {
     public class AccountRepository : IAccountRepository
     {
-        private readonly List<Account> _accounts = new();
-        private readonly List<Transaction> _transactions = new();
-        public AccountRepository()
-        {
-            InitializeTestData();
-        }
-        private void InitializeTestData()
-        {
-            var ivanId = Guid.NewGuid();
-            Console.WriteLine($"Создан тестовый клиент Иван с ID: {ivanId}");
+        private readonly ApplicationDbContext _context;
+        private readonly ILogger<AccountRepository> _logger;
 
-            var checkingAccount = new Account
-            {
-                Id = Guid.NewGuid(),
-                OwnerId = ivanId,
-                Type = AccountType.Checking,
-                Currency = "RUB",
-                Balance = 1000,
-                OpenedDate = DateTime.UtcNow.AddDays(-30),
-                ClosedDate = null
-            };
-            _accounts.Add(checkingAccount);
-            Console.WriteLine($"Создан текущий счет: {checkingAccount.Id}");
-
-            var depositAccount = new Account
-            {
-                Id = Guid.NewGuid(),
-                OwnerId = ivanId,
-                Type = AccountType.Deposit,
-                Currency = "RUB",
-                Balance = 200,
-                InterestRate = 3.0m,
-                OpenedDate = DateTime.UtcNow.AddDays(-30),
-                ClosedDate = null
-            };
-            _accounts.Add(depositAccount);
-            Console.WriteLine($"Создан вклад: {depositAccount.Id}");
-            CreateTestTransactions(checkingAccount.Id, depositAccount.Id, ivanId);
+        public AccountRepository(
+            ApplicationDbContext context,
+            ILogger<AccountRepository> logger)
+        {
+            _context = context;
+            _logger = logger;
         }
 
-        private void CreateTestTransactions(Guid checkingId, Guid depositId, Guid ownerId)
-        {
-            var transaction1 = new Transaction
-            {
-                Id = Guid.NewGuid(),
-                AccountId = checkingId,
-                CounterpartyAccountId = null,
-                Amount = 1000,
-                Currency = "RUB",
-                Type = TransactionType.Credit,
-                Description = "Пополнение наличными кассиром Алексеем",
-                TransactionDate = DateTime.UtcNow.AddDays(-20)
-            };
-            _transactions.Add(transaction1);
 
-            var transaction2 = new Transaction
-            {
-                Id = Guid.NewGuid(),
-                AccountId = checkingId,
-                CounterpartyAccountId = depositId,
-                Amount = 200,
-                Currency = "RUB",
-                Type = TransactionType.Debit,
-                Description = "Перевод на вклад 'Надёжный-6'",
-                TransactionDate = DateTime.UtcNow.AddDays(-15)
-            };
-            _transactions.Add(transaction2);
-
-            var transaction3 = new Transaction
-            {
-                Id = Guid.NewGuid(),
-                AccountId = depositId,
-                CounterpartyAccountId = checkingId,
-                Amount = 200,
-                Currency = "RUB",
-                Type = TransactionType.Credit,
-                Description = "Поступление с текущего счета",
-                TransactionDate = DateTime.UtcNow.AddDays(-15)
-            };
-            _transactions.Add(transaction3);
-
-            var checkingAccount = _accounts.First(a => a.Id == checkingId);
-            checkingAccount.Transactions.Add(transaction1);
-            checkingAccount.Transactions.Add(transaction2);
-
-            var depositAccount = _accounts.First(a => a.Id == depositId);
-            depositAccount.Transactions.Add(transaction3);
-        }
-        public Account Create(CreateAccountDto dto)
+        public async Task<Account> Create(CreateAccountDto dto)
         {
             var account = new Account
             {
@@ -102,65 +28,106 @@ namespace AccountService.Repositories
                 OwnerId = dto.OwnerId,
                 Type = dto.Type,
                 Currency = dto.Currency,
-                Balance = 0,
+                Balance = 0,  
                 InterestRate = dto.InterestRate,
                 OpenedDate = DateTime.UtcNow,
                 ClosedDate = null,
                 Transactions = new List<Transaction>()
             };
-            _accounts.Add(account);
-            Console.WriteLine($"Создан новый счет: {account.Id} для клиента: {account.OwnerId}");
+
+            await _context.Accounts.AddAsync(account);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Создан новый счет {AccountId} для клиента {OwnerId}",
+                account.Id, account.OwnerId);
 
             return account;
         }
-        public List<Account> GetAll()
+
+        public async Task<List<Account>> GetAll()
         {
-            return _accounts;
+
+            return await _context.Accounts
+                .Include(a => a.Transactions) 
+                .ToListAsync();
         }
-        public Account? GetById(Guid id)
+
+        public async Task<Account?> GetById(Guid id)
         {
-            return _accounts.FirstOrDefault(a => a.Id == id);
+            return await _context.Accounts
+                .Include(a => a.Transactions)
+                .FirstOrDefaultAsync(a => a.Id == id);
         }
-        public List<Account> GetByOwnerId(Guid ownerId)
+
+        public async Task<List<Account>> GetByOwnerId(Guid ownerId)
         {
-            return _accounts.Where(a => a.OwnerId == ownerId).ToList();
+            return await _context.Accounts
+                .Where(a => a.OwnerId == ownerId)
+                .Include(a => a.Transactions)
+                .ToListAsync();
         }
-        public void Update(Guid id, UpdateAccountDto dto)
+
+        public async Task Update(Guid id, UpdateAccountDto dto)
         {
-            var account = _accounts.FirstOrDefault(a => a.Id == id);
+            var account = await _context.Accounts.FindAsync(id);
             if (account == null)
                 throw new KeyNotFoundException($"Счет с ID {id} не найден");
+
             if (dto.InterestRate.HasValue)
                 account.InterestRate = dto.InterestRate.Value;
 
             if (dto.ClosedDate.HasValue)
                 account.ClosedDate = dto.ClosedDate.Value;
 
-            Console.WriteLine($"Обновлен счет: {id}");
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Обновлен счет {AccountId}", id);
         }
-        public void Delete(Guid id)
+
+        public async Task UpdateFull(Guid id, UpdateAccountFullDto dto)
         {
-            var account = _accounts.FirstOrDefault(a => a.Id == id);
+            var account = await _context.Accounts.FindAsync(id);
             if (account == null)
                 throw new KeyNotFoundException($"Счет с ID {id} не найден");
 
-            _accounts.Remove(account);
-            Console.WriteLine($"Удален счет: {id}");
+            account.OwnerId = dto.OwnerId;
+            account.Type = dto.Type;
+            account.Currency = dto.Currency;
+            account.Balance = dto.Balance;
+            account.InterestRate = dto.InterestRate;
+            account.OpenedDate = dto.OpenedDate;
+            account.ClosedDate = dto.ClosedDate;
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Полное обновление счета {AccountId}", id);
         }
 
-        public bool AccountExists(Guid accountId, Guid ownerId)
+        public async Task Delete(Guid id)
         {
-            return _accounts.Any(a => a.Id == accountId && a.OwnerId == ownerId);
+            var account = await _context.Accounts.FindAsync(id);
+            if (account == null)
+                throw new KeyNotFoundException($"Счет с ID {id} не найден");
+
+            _context.Accounts.Remove(account);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Удален счет {AccountId}", id);
         }
 
-        public void RegisterTransaction(TransactionDto dto)
+
+        public async Task<bool> AccountExists(Guid accountId, Guid ownerId)
         {
-            var account = _accounts.FirstOrDefault(a => a.Id == dto.AccountId);
+            return await _context.Accounts
+                .AnyAsync(a => a.Id == accountId && a.OwnerId == ownerId);
+        }
+
+        public async Task RegisterTransaction(TransactionDto dto)
+        {
+            var account = await _context.Accounts.FindAsync(dto.AccountId);
             if (account == null)
                 throw new KeyNotFoundException($"Счет с ID {dto.AccountId} не найден");
 
             if (dto.Type == TransactionType.Debit && account.Balance < dto.Amount)
-                throw new InvalidOperationException($"Недостаточно средств на счете. Баланс: {account.Balance}, требуется: {dto.Amount}");
+                throw new InvalidOperationException(
+                    $"Недостаточно средств. Баланс: {account.Balance}, требуется: {dto.Amount}");
 
             var transaction = new Transaction
             {
@@ -173,93 +140,176 @@ namespace AccountService.Repositories
                 Description = dto.Description,
                 TransactionDate = DateTime.UtcNow
             };
+
             if (dto.Type == TransactionType.Credit)
                 account.Balance += dto.Amount;
             else
                 account.Balance -= dto.Amount;
-            _transactions.Add(transaction);
-            account.Transactions.Add(transaction);
 
-            Console.WriteLine($"Зарегистрирована транзакция: {transaction.Id} на сумму {dto.Amount} {dto.Currency}");
+            await _context.Transactions.AddAsync(transaction);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Транзакция {TransactionId} зарегистрирована для счета {AccountId}",
+                transaction.Id, account.Id);
         }
 
-        public void Transfer(TransferDto dto)
+        public async Task Transfer(TransferDto dto)
         {
-            var fromAccount = _accounts.FirstOrDefault(a => a.Id == dto.FromAccountId);
-            var toAccount = _accounts.FirstOrDefault(a => a.Id == dto.ToAccountId);
-            if (fromAccount == null)
-                throw new KeyNotFoundException($"Счет-отправитель с ID {dto.FromAccountId} не найден");
-            if (toAccount == null)
-                throw new KeyNotFoundException($"Счет-получатель с ID {dto.ToAccountId} не найден");
+            await using var transaction = await _context.Database.BeginTransactionAsync();
 
-            if (fromAccount.Balance < dto.Amount)
-                throw new InvalidOperationException($"Недостаточно средств на счете-отправителе. Баланс: {fromAccount.Balance}, требуется: {dto.Amount}");
-
-            if (fromAccount.Currency != toAccount.Currency)
-                throw new InvalidOperationException($"Валюты счетов не совпадают: {fromAccount.Currency} != {toAccount.Currency}");
-
-            var debitTransaction = new Transaction
+            try
             {
-                Id = Guid.NewGuid(),
-                AccountId = dto.FromAccountId,
-                CounterpartyAccountId = dto.ToAccountId,
-                Amount = dto.Amount,
-                Currency = fromAccount.Currency,
-                Type = TransactionType.Debit,
-                Description = $"Перевод на счет {dto.ToAccountId}: {dto.Description}",
-                TransactionDate = DateTime.UtcNow
-            };
+                var fromAccount = await _context.Accounts.FindAsync(dto.FromAccountId);
+                var toAccount = await _context.Accounts.FindAsync(dto.ToAccountId);
 
-            var creditTransaction = new Transaction
+                if (fromAccount == null)
+                    throw new KeyNotFoundException($"Счет-отправитель {dto.FromAccountId} не найден");
+
+                if (toAccount == null)
+                    throw new KeyNotFoundException($"Счет-получатель {dto.ToAccountId} не найден");
+
+                if (fromAccount.Balance < dto.Amount)
+                    throw new InvalidOperationException(
+                        $"Недостаточно средств. Баланс: {fromAccount.Balance}, требуется: {dto.Amount}");
+
+                if (fromAccount.Currency != toAccount.Currency)
+                    throw new InvalidOperationException(
+                        $"Валюты не совпадают: {fromAccount.Currency} != {toAccount.Currency}");
+
+                var debitTransaction = new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    AccountId = dto.FromAccountId,
+                    CounterpartyAccountId = dto.ToAccountId,
+                    Amount = dto.Amount,
+                    Currency = fromAccount.Currency,
+                    Type = TransactionType.Debit,
+                    Description = $"Перевод на счет {dto.ToAccountId}: {dto.Description}",
+                    TransactionDate = DateTime.UtcNow
+                };
+
+                var creditTransaction = new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    AccountId = dto.ToAccountId,
+                    CounterpartyAccountId = dto.FromAccountId,
+                    Amount = dto.Amount,
+                    Currency = toAccount.Currency,
+                    Type = TransactionType.Credit,
+                    Description = $"Поступление со счета {dto.FromAccountId}: {dto.Description}",
+                    TransactionDate = DateTime.UtcNow
+                };
+
+                fromAccount.Balance -= dto.Amount;
+                toAccount.Balance += dto.Amount;
+
+                await _context.Transactions.AddAsync(debitTransaction);
+                await _context.Transactions.AddAsync(creditTransaction);
+                await _context.SaveChangesAsync();
+
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Перевод {Amount} со счета {From} на счет {To} выполнен",
+                    dto.Amount, dto.FromAccountId, dto.ToAccountId);
+            }
+            catch
             {
-                Id = Guid.NewGuid(),
-                AccountId = dto.ToAccountId,
-                CounterpartyAccountId = dto.FromAccountId,
-                Amount = dto.Amount,
-                Currency = toAccount.Currency,
-                Type = TransactionType.Credit,
-                Description = $"Поступление со счета {dto.FromAccountId}: {dto.Description}",
-                TransactionDate = DateTime.UtcNow
-            };
-            fromAccount.Balance -= dto.Amount;
-            toAccount.Balance += dto.Amount;
-            _transactions.Add(debitTransaction);
-            _transactions.Add(creditTransaction);
-            fromAccount.Transactions.Add(debitTransaction);
-            toAccount.Transactions.Add(creditTransaction);
-
-            Console.WriteLine($"Выполнен перевод: {dto.FromAccountId} -> {dto.ToAccountId} на сумму {dto.Amount} {fromAccount.Currency}");
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
-        public List<Transaction> GetStatement(StatementRequestDto dto)
+        public async Task<List<Transaction>> GetStatement(StatementRequestDto dto)
         {
             if (dto.FromDate > dto.ToDate)
-                throw new ArgumentException("Начальная дата не может быть позже конечной даты");
-            if (!_accounts.Any(a => a.Id == dto.AccountId))
+                throw new ArgumentException("Начальная дата не может быть позже конечной");
+
+            if (!await _context.Accounts.AnyAsync(a => a.Id == dto.AccountId))
                 throw new KeyNotFoundException($"Счет с ID {dto.AccountId} не найден");
-            var statement = _transactions
+
+            return await _context.Transactions
                 .Where(t => t.AccountId == dto.AccountId)
                 .Where(t => t.TransactionDate >= dto.FromDate && t.TransactionDate <= dto.ToDate)
                 .OrderBy(t => t.TransactionDate)
-                .ToList();
-
-            Console.WriteLine($"Сформирована выписка по счету {dto.AccountId} за период {dto.FromDate:dd.MM.yyyy} - {dto.ToDate:dd.MM.yyyy}. Найдено транзакций: {statement.Count}");
-
-            return statement;
+                .ToListAsync();
         }
-        public void UpdateFull(Guid id, UpdateAccountFullDto dto)
-        {
-            var account = _accounts.FirstOrDefault(a => a.Id == id);
-            if (account == null)
-                throw new KeyNotFoundException($"Счет с ID {id} не найден");
 
-            account.OwnerId = dto.OwnerId;
-            account.Type = dto.Type;
-            account.Currency = dto.Currency;
-            account.Balance = dto.Balance;
-            account.InterestRate = dto.InterestRate;
-            account.OpenedDate = dto.OpenedDate;
-            account.ClosedDate = dto.ClosedDate;
+        public async Task InitializeTestData()
+        {
+            if (await _context.Accounts.AnyAsync())
+                return;
+
+            var ivanId = Guid.NewGuid();
+            _logger.LogInformation("Создаем тестовые данные для клиента {OwnerId}", ivanId);
+
+            var checkingAccount = new Account
+            {
+                Id = Guid.NewGuid(),
+                OwnerId = ivanId,
+                Type = AccountType.Checking,
+                Currency = "RUB",
+                Balance = 1000,
+                OpenedDate = DateTime.UtcNow.AddDays(-30),
+                ClosedDate = null,
+                Transactions = new List<Transaction>()
+            };
+
+            var depositAccount = new Account
+            {
+                Id = Guid.NewGuid(),
+                OwnerId = ivanId,
+                Type = AccountType.Deposit,
+                Currency = "RUB",
+                Balance = 200,
+                InterestRate = 3.0m,
+                OpenedDate = DateTime.UtcNow.AddDays(-30),
+                ClosedDate = null,
+                Transactions = new List<Transaction>()
+            };
+
+            await _context.Accounts.AddRangeAsync(checkingAccount, depositAccount);
+            await _context.SaveChangesAsync();
+
+            var transactions = new[]
+            {
+                new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    AccountId = checkingAccount.Id,
+                    Amount = 1000,
+                    Currency = "RUB",
+                    Type = TransactionType.Credit,
+                    Description = "Пополнение наличными кассиром Алексеем",
+                    TransactionDate = DateTime.UtcNow.AddDays(-20)
+                },
+                new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    AccountId = checkingAccount.Id,
+                    CounterpartyAccountId = depositAccount.Id,
+                    Amount = 200,
+                    Currency = "RUB",
+                    Type = TransactionType.Debit,
+                    Description = "Перевод на вклад 'Надёжный-6'",
+                    TransactionDate = DateTime.UtcNow.AddDays(-15)
+                },
+                new Transaction
+                {
+                    Id = Guid.NewGuid(),
+                    AccountId = depositAccount.Id,
+                    CounterpartyAccountId = checkingAccount.Id,
+                    Amount = 200,
+                    Currency = "RUB",
+                    Type = TransactionType.Credit,
+                    Description = "Поступление с текущего счета",
+                    TransactionDate = DateTime.UtcNow.AddDays(-15)
+                }
+            };
+
+            await _context.Transactions.AddRangeAsync(transactions);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Тестовые данные успешно созданы");
         }
     }
 }

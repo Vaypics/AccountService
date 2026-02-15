@@ -5,16 +5,17 @@ namespace AccountService.Interfaces
 {
     public interface IAccountRepository
     {
-        Account Create(CreateAccountDto dto);
-        List<Account> GetAll();
-        Account? GetById(Guid id);
-        List<Account> GetByOwnerId(Guid ownerId);
-        void Update(Guid id, UpdateAccountDto dto);
-        void UpdateFull(Guid id, UpdateAccountFullDto dto);
-        void Delete(Guid id);
-        bool AccountExists(Guid accountId, Guid ownerId);
-        void RegisterTransaction(TransactionDto dto);
-        void Transfer(TransferDto dto);
-        List<Transaction> GetStatement(StatementRequestDto dto);
+        Task<Account> Create(CreateAccountDto dto);
+        Task<List<Account>> GetAll();
+        Task<Account?> GetById(Guid id);
+        Task<List<Account>> GetByOwnerId(Guid ownerId);
+        Task Update(Guid id, UpdateAccountDto dto);
+        Task UpdateFull(Guid id, UpdateAccountFullDto dto);
+        Task Delete(Guid id);
+        Task<bool> AccountExists(Guid accountId, Guid ownerId);
+        Task RegisterTransaction(TransactionDto dto);
+        Task Transfer(TransferDto dto);
+        Task<List<Transaction>> GetStatement(StatementRequestDto dto);
+        Task InitializeTestData();
     }
 }

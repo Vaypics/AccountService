@@ -4,7 +4,7 @@ using AccountService.Interfaces;
 using AccountService.Models;
 using AccountService.Repositories;
 
-namespace AccountService.Controlllers
+namespace AccountService.Controllers  
 {
     [Route("api/[controller]")]
     [ApiController]
@@ -25,11 +25,11 @@ namespace AccountService.Controlllers
 
         [HttpGet]
         [ProducesResponseType(typeof(List<AccountResponseDto>), StatusCodes.Status200OK)]
-        public IActionResult GetAllAccounts()
+        public async Task<IActionResult> GetAllAccounts() 
         {
             _logger.LogInformation("Запрос на получение всех счетов");
 
-            var accounts = _repository.GetAll();
+            var accounts = await _repository.GetAll();  
             var response = accounts.Select(a => a.ToResponseDto()).ToList();
 
             _logger.LogInformation("Найдено {Count} счетов", response.Count);
@@ -39,11 +39,11 @@ namespace AccountService.Controlllers
         [HttpGet("{id:guid}")]
         [ProducesResponseType(typeof(AccountResponseDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public IActionResult GetAccount(Guid id)
+        public async Task<IActionResult> GetAccount(Guid id)  
         {
             _logger.LogInformation("Запрос на получение счета {AccountId}", id);
 
-            var account = _repository.GetById(id);
+            var account = await _repository.GetById(id);  
             if (account == null)
             {
                 _logger.LogWarning("Счет {AccountId} не найден", id);
@@ -56,11 +56,11 @@ namespace AccountService.Controlllers
 
         [HttpGet("owner/{ownerId:guid}")]
         [ProducesResponseType(typeof(List<AccountResponseDto>), StatusCodes.Status200OK)]
-        public IActionResult GetAccountsByOwner(Guid ownerId)
+        public async Task<IActionResult> GetAccountsByOwner(Guid ownerId) 
         {
             _logger.LogInformation("Запрос на получение счетов клиента {OwnerId}", ownerId);
 
-            var accounts = _repository.GetByOwnerId(ownerId);
+            var accounts = await _repository.GetByOwnerId(ownerId);  
             var response = accounts.Select(a => a.ToResponseDto()).ToList();
 
             _logger.LogInformation("Найдено {Count} счетов для клиента {OwnerId}", response.Count, ownerId);
@@ -70,17 +70,16 @@ namespace AccountService.Controlllers
         [HttpPost]
         [ProducesResponseType(typeof(AccountResponseDto), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public IActionResult CreateAccount([FromBody] CreateAccountDto dto)
+        public async Task<IActionResult> CreateAccount([FromBody] CreateAccountDto dto)  
         {
-            _logger.LogInformation("Запрос на создание нового счета для клиента {OwnerId}", dto.OwnerId);
+            _logger.LogInformation("Запрос на создание нового счета для клиента {OwnerId}", dto?.OwnerId);
 
             if (dto == null || dto.OwnerId == Guid.Empty)
             {
                 return BadRequest("Тело запроса не может быть пустым. Обязательные поля: ownerId, type, currency");
             }
 
-            if ((dto.Type == AccountType.Deposit || dto.Type == AccountType.Credit)
-       && !dto.InterestRate.HasValue)
+            if ((dto.Type == AccountType.Deposit || dto.Type == AccountType.Credit) && !dto.InterestRate.HasValue)
             {
                 return BadRequest("Для вкладов и кредитных счетов процентная ставка обязательна");
             }
@@ -93,7 +92,7 @@ namespace AccountService.Controlllers
 
             try
             {
-                var account = _repository.Create(dto);
+                var account = await _repository.Create(dto);  
                 var response = account.ToResponseDto();
 
                 _logger.LogInformation("Создан новый счет {AccountId} типа {AccountType}", account.Id, account.Type);
@@ -114,7 +113,7 @@ namespace AccountService.Controlllers
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public IActionResult UpdateAccount(Guid id, [FromBody] UpdateAccountDto dto)
+        public async Task<IActionResult> UpdateAccount(Guid id, [FromBody] UpdateAccountDto dto)  
         {
             _logger.LogInformation("Запрос на обновление счета {AccountId}", id);
 
@@ -126,7 +125,7 @@ namespace AccountService.Controlllers
 
             try
             {
-                _repository.Update(id, dto);
+                await _repository.Update(id, dto); 
                 _logger.LogInformation("Счет {AccountId} успешно обновлен", id);
                 return NoContent();
             }
@@ -141,12 +140,12 @@ namespace AccountService.Controlllers
                 return BadRequest(ex.Message);
             }
         }
- 
+
         [HttpPut("{id:guid}/full")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public IActionResult UpdateAccountFull(Guid id, [FromBody] UpdateAccountFullDto dto)
+        public async Task<IActionResult> UpdateAccountFull(Guid id, [FromBody] UpdateAccountFullDto dto) 
         {
             if (dto == null)
             {
@@ -158,7 +157,7 @@ namespace AccountService.Controlllers
 
             try
             {
-                _repository.UpdateFull(id, dto);
+                await _repository.UpdateFull(id, dto); 
                 return NoContent();
             }
             catch (KeyNotFoundException ex)
@@ -174,13 +173,13 @@ namespace AccountService.Controlllers
         [HttpDelete("{id:guid}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public IActionResult DeleteAccount(Guid id)
+        public async Task<IActionResult> DeleteAccount(Guid id) 
         {
             _logger.LogInformation("Запрос на удаление счета {AccountId}", id);
 
             try
             {
-                _repository.Delete(id);
+                await _repository.Delete(id); 
                 _logger.LogInformation("Счет {AccountId} успешно удален", id);
                 return NoContent();
             }
@@ -193,11 +192,11 @@ namespace AccountService.Controlllers
 
         [HttpGet("exists/{accountId:guid}/{ownerId:guid}")]
         [ProducesResponseType(typeof(bool), StatusCodes.Status200OK)]
-        public IActionResult CheckAccountExists(Guid accountId, Guid ownerId)
+        public async Task<IActionResult> CheckAccountExists(Guid accountId, Guid ownerId) 
         {
             _logger.LogInformation("Проверка существования счета {AccountId} у клиента {OwnerId}", accountId, ownerId);
 
-            var exists = _repository.AccountExists(accountId, ownerId);
+            var exists = await _repository.AccountExists(accountId, ownerId); 
 
             _logger.LogInformation("Счет {AccountId} {Status} у клиента {OwnerId}",
                 accountId, exists ? "существует" : "не существует", ownerId);
@@ -209,7 +208,7 @@ namespace AccountService.Controlllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public IActionResult RegisterTransaction([FromBody] TransactionDto dto)
+        public async Task<IActionResult> RegisterTransaction([FromBody] TransactionDto dto)
         {
             _logger.LogInformation("Запрос на регистрацию транзакции по счету {AccountId} на сумму {Amount} {Currency}",
                 dto.AccountId, dto.Amount, dto.Currency);
@@ -222,7 +221,7 @@ namespace AccountService.Controlllers
 
             try
             {
-                _repository.RegisterTransaction(dto);
+                await _repository.RegisterTransaction(dto); 
                 _logger.LogInformation("Транзакция успешно зарегистрирована для счета {AccountId}", dto.AccountId);
                 return Ok(new { Message = "Транзакция успешно зарегистрирована" });
             }
@@ -247,7 +246,7 @@ namespace AccountService.Controlllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public IActionResult Transfer([FromBody] TransferDto dto)
+        public async Task<IActionResult> Transfer([FromBody] TransferDto dto)  
         {
             _logger.LogInformation("Запрос на перевод {Amount} с {FromAccountId} на {ToAccountId}",
                 dto.Amount, dto.FromAccountId, dto.ToAccountId);
@@ -260,7 +259,7 @@ namespace AccountService.Controlllers
 
             try
             {
-                _repository.Transfer(dto);
+                await _repository.Transfer(dto); 
                 _logger.LogInformation("Перевод успешно выполнен: {FromAccountId} -> {ToAccountId} на сумму {Amount}",
                     dto.FromAccountId, dto.ToAccountId, dto.Amount);
 
@@ -286,7 +285,7 @@ namespace AccountService.Controlllers
         [HttpPost("statement")]
         [ProducesResponseType(typeof(List<TransactionResponseDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public IActionResult GetStatement([FromBody] StatementRequestDto dto)
+        public async Task<IActionResult> GetStatement([FromBody] StatementRequestDto dto) 
         {
             _logger.LogInformation("Запрос выписки по счету {AccountId} за период {FromDate} - {ToDate}",
                 dto.AccountId, dto.FromDate, dto.ToDate);
@@ -299,7 +298,7 @@ namespace AccountService.Controlllers
 
             try
             {
-                var transactions = _repository.GetStatement(dto);
+                var transactions = await _repository.GetStatement(dto);  
                 var response = transactions.Select(t => t.ToResponseDto()).ToList();
 
                 _logger.LogInformation("Сформирована выписка для счета {AccountId}: {Count} транзакций",
@@ -326,8 +325,8 @@ namespace AccountService.Controlllers
             var versionInfo = new
             {
                 Service = "Account Service",
-                Version = "1.0.0",
-                Description = "Микросервис для управления банковскими счетами",
+                Version = "2.0.0",
+                Description = "Микросервис для управления банковскими счетами (PostgreSQL + Docker)",
                 Timestamp = DateTime.UtcNow
             };
 
