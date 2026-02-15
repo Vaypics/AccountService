@@ -26,7 +26,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "Account Service API",
         Version = "v1",
-        Description = "ћикросервис дл€ управлени€ банковскими счетами",
+        Description = "Bank account management microservice",
         Contact = new OpenApiContact
         {
             Name = "Bank Team",

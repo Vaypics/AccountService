@@ -70,16 +70,34 @@ namespace AccountService.Controllers
         [HttpPost]
         [ProducesResponseType(typeof(AccountResponseDto), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateAccount([FromBody] CreateAccountDto dto)  
+        public async Task<IActionResult> CreateAccount([FromBody] CreateAccountDto dto)
         {
             _logger.LogInformation("Запрос на создание нового счета для клиента {OwnerId}", dto?.OwnerId);
 
-            if (dto == null || dto.OwnerId == Guid.Empty)
+            if (dto == null)
             {
-                return BadRequest("Тело запроса не может быть пустым. Обязательные поля: ownerId, type, currency");
+                return BadRequest("Тело запроса не может быть пустым");
             }
 
-            if ((dto.Type == AccountType.Deposit || dto.Type == AccountType.Credit) && !dto.InterestRate.HasValue)
+            if (dto.OwnerId == Guid.Empty)
+            {
+                return BadRequest("OwnerId обязателен");
+            }
+
+            // НОВАЯ ПРОВЕРКА: тип счета обязателен
+            if (!dto.Type.HasValue)
+            {
+                return BadRequest("Тип счета обязателен");
+            }
+
+            // НОВАЯ ПРОВЕРКА: валюта обязательна
+            if (string.IsNullOrWhiteSpace(dto.Currency))
+            {
+                return BadRequest("Валюта обязательна");
+            }
+
+            // ИСПРАВЛЕНО: используем dto.Type.Value для сравнения
+            if ((dto.Type.Value == AccountType.Deposit || dto.Type.Value == AccountType.Credit) && !dto.InterestRate.HasValue)
             {
                 return BadRequest("Для вкладов и кредитных счетов процентная ставка обязательна");
             }
@@ -92,7 +110,7 @@ namespace AccountService.Controllers
 
             try
             {
-                var account = await _repository.Create(dto);  
+                var account = await _repository.Create(dto);
                 var response = account.ToResponseDto();
 
                 _logger.LogInformation("Создан новый счет {AccountId} типа {AccountType}", account.Id, account.Type);

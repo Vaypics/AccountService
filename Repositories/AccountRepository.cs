@@ -22,13 +22,19 @@ namespace AccountService.Repositories
 
         public async Task<Account> Create(CreateAccountDto dto)
         {
+            if (dto.Type == null)
+                throw new ArgumentException("Тип счета обязателен");
+
+            if (string.IsNullOrWhiteSpace(dto.Currency))
+                throw new ArgumentException("Валюта обязательна");
+
             var account = new Account
             {
                 Id = Guid.NewGuid(),
                 OwnerId = dto.OwnerId,
-                Type = dto.Type,
+                Type = dto.Type.Value,  
                 Currency = dto.Currency,
-                Balance = 0,  
+                Balance = 0,
                 InterestRate = dto.InterestRate,
                 OpenedDate = DateTime.UtcNow,
                 ClosedDate = null,
